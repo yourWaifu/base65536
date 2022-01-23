@@ -1,4 +1,4 @@
-A C++ 17 implementation of qntm's base65536 that runs at compile time.
+A C++ 17 implementation of [qntm's base65536](https://github.com/qntm/base65536) that runs at compile time.
 With alternatives for C++ 11 and C++ 14 that runs at runtime.
 
 Useage:
