@@ -39,7 +39,10 @@ constexpr std::array<uint32_t, 256> blockStarts = {
     0x28000, 0x28100, 0x28200, 0x28300, 0x28400, 0x28500
 };
 
-constexpr uint8_t getByteFromBlockStart(const uint32_t blockStart) {
+#if ( 201402L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 201402L) )
+constexpr
+#endif
+uint8_t getByteFromBlockStart(const uint32_t blockStart) {
 #define CASE_BLOCKSTART2(x) case blockStarts[x]: return x; break; case blockStarts[x+1]: return x+1; break;
 #define CASE_BLOCKSTART4(x) CASE_BLOCKSTART2(x) CASE_BLOCKSTART2(x+2)
 #define CASE_BLOCKSTART8(x) CASE_BLOCKSTART4(x) CASE_BLOCKSTART4(x+4)
@@ -54,13 +57,15 @@ constexpr uint8_t getByteFromBlockStart(const uint32_t blockStart) {
     return 255;
 }
 
+#if ( 201703L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) )
+
 template <std::size_t Y>
 struct EncodingResult {
     using Array = std::array<char32_t, Y>;
     std::array<char32_t, Y> data = {};
     std::size_t length = 0;
     static constexpr std::size_t getMaxSize() { return Y; }
-    inline operator std::u32string_view() const { return { data.data(), length }; }
+    inline constexpr operator std::u32string_view() const { return { data.data(), length }; }
 };
 
 template <class X, std::size_t Y>
@@ -102,22 +107,22 @@ constexpr auto encodePtr(const X* arr, std::size_t length = Y) {
 }
 
 template <class X, std::size_t Y>
-constexpr inline auto encode(const X(&arr)[Y], std::size_t length = Y) {
+constexpr inline auto encode(const X(&arr)[Y], std::size_t length = Y - 1) {
     return encodePtr<X, Y>(arr, length);
 }
 
-template <class Array>
-constexpr inline auto encode(const Array& arr, std::size_t length = sizeof(arr) / sizeof(arr[0])) {
+template <
+    class Array,
+    typename std::enable_if<
+        std::is_same<
+            Array,
+            std::array<typename Array::value_type, sizeof(Array) / sizeof(char)>
+        >::value, bool
+    >::type = false
+>
+constexpr inline auto encode(const Array& arr, std::size_t length = (sizeof(arr) / sizeof(arr[0]))) {
     return encodePtr<typename Array::value_type, arr.max_size()>(arr.data, length);
 }
-
-template <class Array>
-constexpr inline auto encode(const Array& arr, std::size_t length = sizeof(arr) / sizeof(arr[0]),
-    typename std::enable_if<std::is_same<Array, std::array<typename Array::value_type, sizeof(arr) / sizeof(arr[0])>>::value, bool>::type = false
-) {
-    return encodePtr<typename Array::value_type, sizeof(arr) / sizeof(arr[0])>(arr.data(), length);
-}
-
 
 template <std::size_t Y>
 struct DecodingResult {
@@ -125,7 +130,7 @@ struct DecodingResult {
     std::array<char, Y> data = {};
     std::size_t length = 0;
     static constexpr std::size_t getMaxSize() { return Y; }
-    inline operator std::string_view() const { return { data.data(), length }; }
+    inline constexpr operator std::string_view() const { return { data.data(), length }; }
 };
 
 template<class DecodingResult>
@@ -168,20 +173,29 @@ constexpr auto decodePtr(const X* arr, std::size_t length = Y) {
     }
 
     return DecodingResult<Y>{
-        std::move(target), targetSize
+        std::move(target),
+            targetSize
     };
 }
 
-template <class X, std::size_t Y>
-constexpr inline auto decode(const X(&arr)[Y], std::size_t length = Y) {
-    return decodePtr<X, Y>(arr, length);
-}
-
-template <class Array>
-constexpr inline auto decode(const Array& arr, std::size_t length = sizeof(arr) / sizeof(arr[0]),
-    typename std::enable_if<std::is_same<Array, std::array<typename Array::value_type, sizeof(arr) / sizeof(arr[0])>>::value, bool>::type = false
+template <
+    class Array,
+    typename std::enable_if<
+        std::is_same<
+            Array,
+            std::array<typename Array::value_type, sizeof(Array) / sizeof(char32_t)>
+        >::value, bool
+    >::type = false
+>
+constexpr inline auto decode(
+    const Array& arr, std::size_t length = sizeof(arr) / sizeof(arr[0])
 ) {
     return decodePtr<typename Array::value_type, sizeof(arr) / sizeof(arr[0])>(arr.data(), length);
+}
+
+template <class X, std::size_t Y>
+constexpr inline auto decode(const X(&arr)[Y], std::size_t length = Y - 1) {
+    return decodePtr<X, Y>(arr, length);
 }
 
 template <class EncodingResult>
@@ -189,7 +203,7 @@ constexpr auto decode(const EncodingResult& encodedInput) {
     return decode<typename EncodingResult::Array>(encodedInput.data, encodedInput.length);
 }
 
-//Non-constexpr version
+#endif
 
 std::u32string encode(const std::string& input) {
     std::size_t targetSize = input.length();
