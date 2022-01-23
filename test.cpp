@@ -4,6 +4,8 @@ int main() {
     //std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
     //IMPORTANT wstring_convert has been deprecated, we are only using for testing reasons
 
+    using namespace Base65536;
+
     static constexpr char testInput[] =
         "hello world";
 

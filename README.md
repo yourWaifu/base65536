@@ -9,8 +9,8 @@ At compile time:
 #include "base65536/base65536.h"
 
 static constexpr char testInput[] = "Hello World";
-constexpr auto test = encode(testInput);
-constexpr auto data = decode(test);
+constexpr auto test = Base65536::encode(testInput);
+constexpr auto data = Base65536::decode(test);
 static_assert(data.success);
 ```
 
@@ -20,8 +20,8 @@ runtime time:
 #include "base65536/base65536.h"
 
 const std::string testInput = "Hello World";
-constexpr auto test = encode(testInput);
+constexpr auto test = Base65536::encode(testInput);
 bool fail = false; // use this to check for errors
-constexpr auto data = decode(test, fail);
+constexpr auto data = Base65536::decode(test, fail);
 if (fail) {}
 ```
