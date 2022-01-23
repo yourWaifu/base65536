@@ -39,11 +39,16 @@ constexpr std::array<uint32_t, 256> blockStarts = {
     0x28000, 0x28100, 0x28200, 0x28300, 0x28400, 0x28500
 };
 
+struct ByteFromBlockStartResult {
+    uint8_t byte;
+    bool error = true;
+};
+
 #if ( 201402L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 201402L) )
 constexpr
 #endif
-uint8_t getByteFromBlockStart(const uint32_t blockStart) {
-#define CASE_BLOCKSTART2(x) case blockStarts[x]: return x; break; case blockStarts[x+1]: return x+1; break;
+ByteFromBlockStartResult getByteFromBlockStart(const uint32_t blockStart) {
+#define CASE_BLOCKSTART2(x) case blockStarts[x]: return ByteFromBlockStartResult{x, false}; break; case blockStarts[x+1]: return ByteFromBlockStartResult{x+1, false}; break;
 #define CASE_BLOCKSTART4(x) CASE_BLOCKSTART2(x) CASE_BLOCKSTART2(x+2)
 #define CASE_BLOCKSTART8(x) CASE_BLOCKSTART4(x) CASE_BLOCKSTART4(x+4)
 #define CASE_BLOCKSTART16(x) CASE_BLOCKSTART8(x) CASE_BLOCKSTART8(x+8)
@@ -54,7 +59,7 @@ uint8_t getByteFromBlockStart(const uint32_t blockStart) {
     switch (blockStart) {
         CASE_BLOCKSTART256
     }
-    return 255;
+    return ByteFromBlockStartResult{ 255, true };
 }
 
 #if ( 201703L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) )
@@ -129,6 +134,7 @@ struct DecodingResult {
     using Array = std::array<char, Y>;
     std::array<char, Y> data = {};
     std::size_t length = 0;
+    bool success = false;
     static constexpr std::size_t getMaxSize() { return Y; }
     inline constexpr operator std::string_view() const { return { data.data(), length }; }
 };
@@ -140,6 +146,7 @@ constexpr inline auto encode(const DecodingResult& input) {
 
 template <class X, std::size_t Y>
 constexpr auto decodePtr(const X* arr, std::size_t length = Y) {
+    bool fail = false;
     bool done = false;
     auto input = std::u32string_view{ arr, length };
     std::array<char, Y> target = {};
@@ -155,7 +162,7 @@ constexpr auto decodePtr(const X* arr, std::size_t length = Y) {
 
         if (static_cast<uint32_t>(blockStart) == paddingBlockStart) {
             if (done) {
-                //should error
+                fail = true;
                 break;
             }
             else {
@@ -165,16 +172,22 @@ constexpr auto decodePtr(const X* arr, std::size_t length = Y) {
             }
         }
         else {
+            const auto result = getByteFromBlockStart(blockStart);
+            if (result.error || done) {
+                fail = true;
+                break;
+            }
+
             target[targetSize] = static_cast<char>(byteChuck[0]);
             targetSize += 1;
-            target[targetSize] = static_cast<char>(getByteFromBlockStart(blockStart));
+            target[targetSize] = static_cast<char>(result.byte);
             targetSize += 1;
         }
     }
 
     return DecodingResult<Y>{
         std::move(target),
-            targetSize
+        targetSize, !fail
     };
 }
 
@@ -241,7 +254,8 @@ std::u32string encode(const std::string& input) {
     return target;
 }
 
-std::string decode(const std::u32string& input) {
+std::string decode(const std::u32string& input, bool& fail) {
+    fail = false;
     bool done = false;
     std::string target = {};
     target.reserve(input.length() * 2);
@@ -257,7 +271,7 @@ std::string decode(const std::u32string& input) {
 
         if (static_cast<uint32_t>(blockStart) == paddingBlockStart) {
             if (done) {
-                //should error
+                fail = true;
                 break;
             }
             else {
@@ -266,9 +280,14 @@ std::string decode(const std::u32string& input) {
             }
         }
         else {
+            const auto result = getByteFromBlockStart(blockStart);
+            if (result.error || done) {
+                fail = true;
+                break;
+            }
             target += {
                 static_cast<char>(byteChuck[0]),
-                    static_cast<char>(getByteFromBlockStart(blockStart))
+                static_cast<char>(result.byte)
             };
         }
     }

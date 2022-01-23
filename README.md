@@ -11,7 +11,7 @@ At compile time:
 static constexpr char testInput[] = "Hello World";
 constexpr auto test = encode(testInput);
 constexpr auto data = decode(test);
-static_assert(std::string_view{testInput}.compare(std::string_view{data}) == 0);
+static_assert(data.success);
 ```
 
 runtime time:
@@ -21,5 +21,7 @@ runtime time:
 
 const std::string testInput = "Hello World";
 constexpr auto test = encode(testInput);
-constexpr auto data = decode(test);
+bool fail = false; // use this to check for errors
+constexpr auto data = decode(test, fail);
+if (fail) {}
 ```
