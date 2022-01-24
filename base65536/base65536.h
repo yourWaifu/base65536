@@ -76,8 +76,8 @@ namespace Base65536 {
     };
 
     template <class X, std::size_t Y>
-    constexpr auto encodePtr(const X* arr, std::size_t length = Y) {
-        auto input = std::string_view{ arr, length };
+    constexpr auto encodePtr(const X* arr, std::size_t length = Y - 1) {
+        auto input = std::basic_string_view<X>{ arr, length };
         std::array<char32_t, Y> target = {};
         std::size_t targetSize = 0;
 
@@ -105,6 +105,7 @@ namespace Base65536 {
                 ? paddingBlockStart
                 : blockStarts[btyeChuck[1]];
 
+
             auto codePoint = blockStart + static_cast<uint32_t>(btyeChuck[0]);
             target[targetSize] = static_cast<const char32_t>(codePoint);
             targetSize += 1;
@@ -118,17 +119,38 @@ namespace Base65536 {
         return encodePtr<X, Y>(arr, length);
     }
 
+    template<class Object>
+    struct hasReserve {
+    private:
+        template<typename T>
+        static constexpr auto check(T*)
+            -> typename
+            std::is_same<
+            decltype(std::declval<T>().reserve( std::declval<std::size_t>() )),
+            void
+            >::type;
+
+        template<typename>
+        static constexpr std::false_type check(...);
+
+    public:
+        using type = decltype(check<Object>(0));
+        static constexpr bool value = type::value;
+    };
+
     template <
         class Array,
+        std::size_t Size = sizeof(Array) / sizeof(typename Array::value_type),
         typename std::enable_if<
         std::is_same<
         Array,
         std::array<typename Array::value_type, sizeof(Array) / sizeof(char)>
         >::value, bool
-        >::type = false
+        >::type = false,
+        typename std::enable_if< !hasReserve< Array >::value, bool >::type = false
     >
-        constexpr inline auto encode(const Array& arr, std::size_t length = (sizeof(arr) / sizeof(arr[0]))) {
-        return encodePtr<typename Array::value_type, arr.max_size()>(arr.data, length);
+    constexpr inline auto encode(const Array& arr, std::size_t length = Size) {
+        return encodePtr<typename Array::value_type, Size>(arr.data(), length);
     }
 
     template <std::size_t Y>
@@ -141,13 +163,13 @@ namespace Base65536 {
         inline constexpr operator std::string_view() const { return { data.data(), length }; }
     };
 
-    template<class DecodingResult>
+    template<class DecodingResult, typename DecodingResult::Array::value_type = 0>
     constexpr inline auto encode(const DecodingResult& input) {
         return encode<typename DecodingResult::Array>(input.data(), input.length);
     }
 
     template <class X, std::size_t Y>
-    constexpr auto decodePtr(const X* arr, std::size_t length = Y) {
+    constexpr auto decodePtr(const X* arr, std::size_t length = Y - 1) {
         bool fail = false;
         bool done = false;
         auto input = std::u32string_view{ arr, length };
@@ -162,9 +184,15 @@ namespace Base65536 {
             const auto blockStart = codepoint - byteChuck[0];
             byteChuck[1] = blockStart >> 8;
 
-            if (static_cast<uint32_t>(blockStart) == paddingBlockStart) {
+            if (Y == targetSize) {
+                fail = true;
+                //Given Size is too small
+                break;
+            }
+            else if (static_cast<uint32_t>(blockStart) == paddingBlockStart) {
                 if (done) {
                     fail = true;
+                    //found padding in the middle of decoding
                     break;
                 }
                 else {
@@ -177,11 +205,18 @@ namespace Base65536 {
                 const auto result = getByteFromBlockStart(blockStart);
                 if (result.error || done) {
                     fail = true;
+                    //invalid chuck of bytes
+                    //found padding in the middle of decoding
                     break;
                 }
 
                 target[targetSize] = static_cast<char>(byteChuck[0]);
                 targetSize += 1;
+                if (Y == targetSize) {
+                    fail = true;
+                    //Given Size is too small
+                    break;
+                }
                 target[targetSize] = static_cast<char>(result.byte);
                 targetSize += 1;
             }
@@ -195,17 +230,19 @@ namespace Base65536 {
 
     template <
         class Array,
+        std::size_t Size = sizeof(Array) / sizeof(typename Array::value_type),
         typename std::enable_if<
         std::is_same<
         Array,
         std::array<typename Array::value_type, sizeof(Array) / sizeof(char32_t)>
         >::value, bool
-        >::type = false
+        >::type = false,
+        typename std::enable_if< !hasReserve< Array >::value, bool >::type = false
     >
         constexpr inline auto decode(
-            const Array& arr, std::size_t length = sizeof(arr) / sizeof(arr[0])
+            const Array& arr, std::size_t length = Size
         ) {
-        return decodePtr<typename Array::value_type, sizeof(arr) / sizeof(arr[0])>(arr.data(), length);
+        return decodePtr<typename Array::value_type, Size>(arr.data(), length);
     }
 
     template <class X, std::size_t Y>
@@ -213,14 +250,18 @@ namespace Base65536 {
         return decodePtr<X, Y>(arr, length);
     }
 
-    template <class EncodingResult>
+    template <class EncodingResult, typename EncodingResult::Array::value_type = 0>
     constexpr auto decode(const EncodingResult& encodedInput) {
         return decode<typename EncodingResult::Array>(encodedInput.data, encodedInput.length);
     }
 
 #endif
 
-    std::u32string encode(const std::string& input) {
+    template<class String>
+#if ( 202002L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) )
+    constexpr
+#endif
+    std::u32string encode(const String& input) {
         std::size_t targetSize = input.length();
         std::u32string target;
         target.reserve(targetSize);
@@ -256,6 +297,9 @@ namespace Base65536 {
         return target;
     }
 
+#if ( 202002L <= __cplusplus || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) )
+    constexpr
+#endif
     std::string decode(const std::u32string& input, bool& fail) {
         fail = false;
         bool done = false;
